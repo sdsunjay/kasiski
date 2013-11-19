@@ -1,0 +1,224 @@
+#!/bin/csh -f 
+#GRADING SCRIPT
+
+set class=cpe456
+set classdir=pn-cs456
+set asgn=asgn2
+set maketarget=all
+set logfile=log.$$
+set tmpdir=tmp.$$
+
+if ( `hostname` == "angora.home" || `hostname -f` == "lagniappe.csc.calpoly.edu" ) then
+  setenv lib /home/pnico/CalPoly/Class/$class/now/Asgn/Handin/lib/$asgn
+  set logprog=/bin/echo
+  set longlines=/home/pnico/bin/longlines.pl
+else
+  if ( -d $classdir/bin/Public ) then
+    set path=($path $classdir/bin/Public )
+  endif
+  if ( -d ~pnico/bin ) then
+    set path=($path ~pnico/bin )
+  endif
+  setenv lib /home/$classdir/lib/$asgn/
+  set logprog=/home/$classdir/bin/logit.$asgn
+  set longlines=longlines.pl
+endif
+
+set testdir=$lib/testlib
+set exitstatus = 0
+set which = -1
+onintr bail
+
+
+if ( $?GRADINGMODE ) then
+  echo "(Grading mode.  Skipping build.)"
+else
+  # Only try to build if GRADINGMODE isn't set
+  if ( -e Input ) then
+    echo "Input exists."
+    echo "  (This script needs to create a file called "\"Input\"
+    echo "   please rename and try again.)"
+    echo ""
+    exit 0
+  else
+    ln -s $lib/Tests/Input
+  endif
+
+  if ( $exitstatus == 0 ) then
+    echo ""
+    echo "------------------------"
+    echo "Looking for source files"
+    echo "------------------------"
+    echo ""
+
+    set nonomatch
+    set src = ( *.[ch] )
+    if ( "$src" != '*.[ch]' ) then
+
+      echo "Found: $src"
+    else if ( "$src" != '*.java' ) then
+      echo "Found: $src"
+    else
+      echo "***** No source files found. " 
+      echo "***** Are you sure you're in the right directory?"
+      echo ""
+      set exitstatus = -1
+    endif
+  endif
+
+  if ( $exitstatus == 0 ) then
+    echo ""
+    echo "-----------------------"
+    echo "Looking for a Makefile"
+    echo "----------------------"
+    echo ""
+
+    if ( $exitstatus == 0 ) then
+      if ( -f Makefile ) then
+        echo "Found: Makefile"
+      else if ( -f makefile ) then 
+        echo "Found: makefile"
+      else 
+        echo ""
+        echo "***** No Makefile found."
+        echo ""
+        set exitstatus = -2
+      endif
+    endif
+  endif
+
+  if ( $exitstatus == 0 ) then
+    echo ""
+    echo "--------------------------------"
+    echo "Checking for long lines (no program should have any lines > 80 chars)"
+    echo "--------------------------------"
+    echo ""
+    if ( ! { $longlines $src } ) then
+       set exitstatus=-3
+    else
+       echo "Line length ok."
+    endif
+    echo ""
+  endif
+
+  if ( $exitstatus == 0 ) then
+    echo ""
+    echo "------------------------------------"
+    echo "Building the application:" \"make $maketarget\"
+    echo "------------------------------------"
+    echo ""
+
+    set cmd = ( make $maketarget )
+    echo "$cmd" 
+    if ( ! { $cmd  } ) then
+      echo ""
+      echo "Build failed."
+      set exitstatus = -4
+    endif
+  endif
+  
+  if ( $exitstatus == 0 && "$maketarget" != "all" ) then
+    echo ""
+    echo "---------------"
+    echo "checking for $maketarget"
+    echo "---------------"
+    echo ""
+
+    if ( ! -f $maketarget ) then
+      echo "$maketarget not found"
+      set exitstatus = -5
+    endif
+  endif
+endif
+
+#===================================================================
+#below this is where most customization should happen
+#===================================================================
+
+if ( $exitstatus == 0 ) then
+  echo ""
+  echo "----------------------"
+  echo "Testing functionality"
+  echo "----------------------"
+  echo ""
+  echo "Notes:"
+  echo ""
+  echo ""
+  echo ""
+  echo "  Some of the tests below are designed to cause the"
+  echo "  program to terminate in an error state.  In those"
+  echo "  cases, it's possible to see ok even when the output"
+  echo "  is not.  Only the status is checked on those."
+  echo "  "
+  echo "  For kasiski and ic headers are removed before diffs."
+  echo "  For ftable, only the ic value is checked."
+  echo "  "
+  echo ""
+  echo "  The kasiski tests below are the result of running"
+  echo "  against both a reference program that allows overlapping"
+  echo "  strings and a naive implementatin of one that does not"
+  echo "  and choosing the better score."
+  echo "  "
+  echo "    Unfortunately, the output the when overlapping"
+  echo "  strings are excluded is not well-specified by the"
+  echo "  assignment, so these don't actually have any overlapping."
+  echo "  matches."
+  echo "  "
+  echo "    (Consider that case of the string "\""aaaaXaaa"\"": for the"
+  echo "  substring "\""aaa"\"", kaskski must report the distance between"
+  echo "  the one at position 0 and the one at position 5 as well as"
+  echo "  the one at position 1 and the one at position 5, because who"
+  echo "  knows which one might be a real match.)"
+
+  echo "  "
+  echo "  Each test runs with a sixty second timeout."
+  echo ""
+  echo ""
+
+  #
+  #
+  #
+
+
+  mkdir $tmpdir
+
+  set logone=$tmpdir/logone
+  set logtwo=$tmpdir/logtwo
+
+  if ( -f $logone ) mv $logone $logone.bak
+  if ( -f $logtwo ) mv $logtwo $logtwo.bak
+
+  if ( ! { ( $lib/tests.pl >& $logone ) } ) then
+    @ existatus++
+  endif
+
+  if ( ! { ( $lib/tests_no.pl >& $logtwo ) } ) then
+    @ existatus++
+  endif
+
+
+  if ( ! $exitstatus ) then
+    $lib/print_best_log $logone $logtwo
+    set exitstatus=$status;
+  endif
+endif    
+
+#===================================================================
+
+goto done
+
+bail:
+  echo "Interrupted."
+  set exitstatus=-7
+
+done:
+
+if ( ! $?GRADINGMODE ) rm -rf $tmpdir
+
+if ( -x $logprog ) then
+  $logprog $exitstatus 0
+endif
+rm Input
+
+exit $exitstatus 
+
